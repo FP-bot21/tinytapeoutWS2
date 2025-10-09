@@ -29,7 +29,7 @@ module tt_um_vga_example(
     assign uio_oe  = 0;
 
     // Unterdrücke Warnungen für ungenutzte Signale
-    wire _unused_ok = &{ena, ui_in, uio_in};
+    wire _unused_ok = &{ena, uio_in};
 
     // VGA-Signal Generierung
     hvsync_generator hvsync_gen(
@@ -42,13 +42,36 @@ module tt_um_vga_example(
         .vpos(pix_y)
     );
 
-    // Hintergrundfarbe setzen (straßengrau)
+    // Zustände für die Bewegung der gestrichelten Linie
+    reg [9:0] scroll_offset; // Offset für die gestrichelte Linie
+    wire is_dashed = (((pix_y + scroll_offset) % 32) < 16) && (pix_x >= 310 && pix_x < 330); 
+
+    // Zustände für die Bewegung des Autos
+    reg [9:0] car_position = 480; // Startposition des Autos
+    wire is_car = (pix_x >= car_position && pix_x < car_position + 80) && (pix_y >= 240 && pix_y < 360); 
+
+    // Bewegungssteuerung der gestrichelten Linie mit vsync in umgekehrte Richtung
+    always @(posedge vsync or negedge rst_n) begin
+        if (!rst_n) begin
+            scroll_offset <= 0;
+        end else if (ui_in[0]) begin
+            scroll_offset <= scroll_offset - 1; // Vertikale Bewegung der gesamten Linie nach oben
+        end
+
+        // Auto bewegt sich nach links oder rechts basierend auf den Pins
+        if (ui_in[1] && (car_position > 0)) begin
+            car_position <= car_position - 1; // Nach links bewegen
+        end else if (ui_in[2] && (car_position < 640 - 80)) begin
+            car_position <= car_position + 1; // Nach rechts bewegen
+        end
+    end
+
+    // Linien Positionen
     wire is_line = (pix_x < 20) || (pix_x >= 620); // Links und rechts: 20 Pixel breite Linien
-    wire is_dashed = ((pix_y[4] == 1'b0) && (pix_x >= 310 && pix_x < 330)); // Mitte: gestrichelte Linie über pix_y[4]
 
     // Farbzuweisungen
-    assign R = video_active ? (is_line || is_dashed ? 2'b11 : 2'b10) : 2'b00;
-    assign G = video_active ? (is_line || is_dashed ? 2'b11 : 2'b10) : 2'b00;
-    assign B = video_active ? (is_line || is_dashed ? 2'b11 : 2'b10) : 2'b00;
+    assign R = video_active ? (is_line || is_dashed || is_car ? 2'b11 : 2'b10) : 2'b00;
+    assign G = video_active ? (is_line || is_dashed || is_car ? 2'b11 : 2'b10) : 2'b00;
+    assign B = video_active ? (is_line || is_dashed || is_car ? 2'b11 : 2'b10) : 2'b00;
 
 endmodule
